@@ -1,9 +1,11 @@
 import os
-from typing import Any
+from typing import Any, Callable, List
 from unittest.mock import AsyncMock
 
-from port_ocean.tests.helpers import (
-    get_raw_result_on_integration_sync_kinds,
+from port_ocean.core.handlers.port_app_config.models import ResourceConfig
+from port_ocean.ocean import Ocean
+from port_ocean.tests.helpers.ocean_app import (
+    get_raw_result_on_integration_sync_resource_config,
 )
 from pytest_httpx import HTTPXMock
 
@@ -28,6 +30,8 @@ FAKE_PERSON_RAW = FAKE_PERSON.dict()
 
 async def test_full_sync_with_http_mock(
     httpx_mock: HTTPXMock,
+    get_mocked_ocean_app: Callable[[], Ocean],
+    get_mock_ocean_resource_configs: Callable[[], List[ResourceConfig]],
 ) -> None:
     httpx_mock.add_response(
         match_headers={"User-Agent": USER_AGENT},
@@ -38,45 +42,41 @@ async def test_full_sync_with_http_mock(
         },
     )
 
-    results = await get_raw_result_on_integration_sync_kinds(INTEGRATION_PATH)
+    app = get_mocked_ocean_app()
+    resource_configs = get_mock_ocean_resource_configs()
 
-    assert len(results) > 0
-
-    assert "fake-person" in results
-    assert "fake-department" in results
-
-    person_results = results["fake-person"]
-    department_results = results["fake-department"]
-
-    assert len(person_results) > 0
-    assert len(person_results[0][0]) > 1
-    assert len(person_results[0][1]) == 0
-
-    assert len(department_results) > 0
-    assert len(department_results[0][0]) == 5
-    assert len(department_results[0][1]) == 0
+    for resource_config in resource_configs:
+        result = await get_raw_result_on_integration_sync_resource_config(
+            app, resource_config
+        )
+        assert len(result)
+        assert len(result[1]) == 0  # List of errors
+        if resource_config.kind == "fake-person":
+            assert result[0][0] == FAKE_PERSON_RAW
+        elif resource_config.kind == "fake-department":
+            assert len(result[0]) == 5
 
 
-async def test_full_sync_using_mocked_3rd_party(monkeypatch: Any) -> None:
+async def test_full_sync_using_mocked_3rd_party(
+    monkeypatch: Any,
+    get_mocked_ocean_app: Callable[[], Ocean],
+    get_mock_ocean_resource_configs: Callable[[], List[ResourceConfig]],
+) -> None:
     fake_client_mock = AsyncMock()
     fake_client_mock.return_value = [FakePerson(**FAKE_PERSON_RAW)]
 
     monkeypatch.setattr(fake_client, "get_fake_persons", fake_client_mock)
 
-    results = await get_raw_result_on_integration_sync_kinds(INTEGRATION_PATH)
+    app = get_mocked_ocean_app()
+    resource_configs = get_mock_ocean_resource_configs()
 
-    assert len(results) > 0
-
-    assert "fake-person" in results
-    assert "fake-department" in results
-
-    person_results = results["fake-person"]
-    department_results = results["fake-department"]
-
-    assert len(person_results) > 0
-    assert len(person_results[0][0]) == 5
-    assert len(person_results[0][1]) == 0
-
-    assert len(department_results) > 0
-    assert len(department_results[0][0]) == 5
-    assert len(department_results[0][1]) == 0
+    for resource_config in resource_configs:
+        result = await get_raw_result_on_integration_sync_resource_config(
+            app, resource_config
+        )
+        assert len(result)
+        assert len(result[1]) == 0  # List of errors
+        if resource_config.kind == "fake-person":
+            assert result[0][0] == FAKE_PERSON_RAW
+        elif resource_config.kind == "fake-department":
+            assert len(result[0]) == 5
